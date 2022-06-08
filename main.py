@@ -118,6 +118,22 @@ def instantiate_from_config(config):
         raise KeyError("Expected key `target` to instantiate.")
     return get_obj_from_str(config["target"])(**config.get("params", dict()))
 
+# passing object as parameters
+def instantiate_data_from_config(config):
+    if not "target" in config:
+        raise KeyError("Expected key `target` to instantiate.")
+    tran = [torchvision.transforms.ToTensor(),
+#                   torchvision.transforms.CenterCrop(config.get("crop_resolution", 32)),
+#                   torchvision.transforms.Resize(config.get("resize_resolution", 32)),
+    #                   torchvision.transforms.Lambda(lambda x: 2*x-1)]
+                  torchvision.transforms.Normalize((.5,.5,.5),(.5,.5,.5))]
+    trans = torchvision.transforms.Compose(tran)
+    if config['target'][-8:] == "ImageNet":
+        target_tran = torchvision.transforms.ToTensor()
+    else:
+        target_tran = None
+    dset = get_obj_from_str(config["target"])(transform=trans,target_transform=target_tran,**config.get("params", dict()))
+    return dset
 
 class WrappedDataset(Dataset):
     """Wraps an arbitrary object with __len__ and __getitem__ into a pytorch dataset"""
@@ -151,11 +167,11 @@ class DataModuleFromConfig(pl.LightningDataModule):
 
     def prepare_data(self):
         for data_cfg in self.dataset_configs.values():
-            instantiate_from_config(data_cfg)
+            instantiate_data_from_config(data_cfg)
 
     def setup(self, stage=None):
         self.datasets = dict(
-            (k, instantiate_from_config(self.dataset_configs[k]))
+            (k, instantiate_data_from_config(self.dataset_configs[k]))
             for k in self.dataset_configs)
         if self.wrap:
             for k in self.datasets:
@@ -163,12 +179,12 @@ class DataModuleFromConfig(pl.LightningDataModule):
 
     def _train_dataloader(self):
         return DataLoader(self.datasets["train"], batch_size=self.batch_size,
-                          num_workers=self.num_workers, shuffle=True, collate_fn=custom_collate)
+                          num_workers=self.num_workers, shuffle=True)
 
     def _val_dataloader(self):
         return DataLoader(self.datasets["validation"],
                           batch_size=self.batch_size,
-                          num_workers=self.num_workers, collate_fn=custom_collate)
+                          num_workers=self.num_workers)
 
     def _test_dataloader(self):
         return DataLoader(self.datasets["test"], batch_size=self.batch_size,
@@ -187,32 +203,33 @@ class SetupCallback(Callback):
         self.lightning_config = lightning_config
 
     def on_pretrain_routine_start(self, trainer, pl_module):
-        if trainer.global_rank == 0:
+#         if trainer.global_rank == 0:
             # Create logdirs and save configs
-            os.makedirs(self.logdir, exist_ok=True)
-            os.makedirs(self.ckptdir, exist_ok=True)
-            os.makedirs(self.cfgdir, exist_ok=True)
+        print("Trainer global rank: ",trainer.global_rank)
+        os.makedirs(self.logdir, exist_ok=True)
+        os.makedirs(self.ckptdir, exist_ok=True)
+        os.makedirs(self.cfgdir, exist_ok=True)
 
-            print("Project config")
-            print(self.config.pretty())
-            OmegaConf.save(self.config,
-                           os.path.join(self.cfgdir, "{}-project.yaml".format(self.now)))
+        print("Project config")
+        print(self.config)
+        OmegaConf.save(self.config,
+                       os.path.join(self.cfgdir, "{}-project.yaml".format(self.now)))
 
-            print("Lightning config")
-            print(self.lightning_config.pretty())
-            OmegaConf.save(OmegaConf.create({"lightning": self.lightning_config}),
-                           os.path.join(self.cfgdir, "{}-lightning.yaml".format(self.now)))
+        print("Lightning config")
+        print(self.lightning_config)
+        OmegaConf.save(OmegaConf.create({"lightning": self.lightning_config}),
+                       os.path.join(self.cfgdir, "{}-lightning.yaml".format(self.now)))
 
-        else:
-            # ModelCheckpoint callback created log directory --- remove it
-            if not self.resume and os.path.exists(self.logdir):
-                dst, name = os.path.split(self.logdir)
-                dst = os.path.join(dst, "child_runs", name)
-                os.makedirs(os.path.split(dst)[0], exist_ok=True)
-                try:
-                    os.rename(self.logdir, dst)
-                except FileNotFoundError:
-                    pass
+#         else:
+#             # ModelCheckpoint callback created log directory --- remove it
+#             if not self.resume and os.path.exists(self.logdir):
+#                 dst, name = os.path.split(self.logdir)
+#                 dst = os.path.join(dst, "child_runs", name)
+#                 os.makedirs(os.path.split(dst)[0], exist_ok=True)
+#                 try:
+#                     os.rename(self.logdir, dst)
+#                 except FileNotFoundError:
+#                     pass
 
 
 class ImageLogger(Callback):
@@ -462,7 +479,8 @@ if __name__ == "__main__":
             },
         }
         default_logger_cfg = default_logger_cfgs["testtube"]
-        logger_cfg = lightning_config.logger or OmegaConf.create()
+#         logger_cfg = lightning_config.logger or OmegaConf.create()
+        logger_cfg = OmegaConf.create()
         logger_cfg = OmegaConf.merge(default_logger_cfg, logger_cfg)
         trainer_kwargs["logger"] = instantiate_from_config(logger_cfg)
 
@@ -482,7 +500,8 @@ if __name__ == "__main__":
             default_modelckpt_cfg["params"]["monitor"] = model.monitor
             default_modelckpt_cfg["params"]["save_top_k"] = 3
 
-        modelckpt_cfg = lightning_config.modelcheckpoint or OmegaConf.create()
+#         modelckpt_cfg = lightning_config.modelcheckpoint or OmegaConf.create()
+        modelckpt_cfg = OmegaConf.create()
         modelckpt_cfg = OmegaConf.merge(default_modelckpt_cfg, modelckpt_cfg)
         trainer_kwargs["checkpoint_callback"] = instantiate_from_config(modelckpt_cfg)
 
@@ -516,7 +535,8 @@ if __name__ == "__main__":
                 }
             },
         }
-        callbacks_cfg = lightning_config.callbacks or OmegaConf.create()
+#         callbacks_cfg = lightning_config.callbacks or OmegaConf.create()
+        callbacks_cfg = OmegaConf.create()
         callbacks_cfg = OmegaConf.merge(default_callbacks_cfg, callbacks_cfg)
         trainer_kwargs["callbacks"] = [instantiate_from_config(callbacks_cfg[k]) for k in callbacks_cfg]
 
@@ -536,7 +556,8 @@ if __name__ == "__main__":
             ngpu = len(lightning_config.trainer.gpus.strip(",").split(','))
         else:
             ngpu = 1
-        accumulate_grad_batches = lightning_config.trainer.accumulate_grad_batches or 1
+#         accumulate_grad_batches = lightning_config.trainer.accumulate_grad_batches or 1
+        accumulate_grad_batches = 1
         print(f"accumulate_grad_batches = {accumulate_grad_batches}")
         lightning_config.trainer.accumulate_grad_batches = accumulate_grad_batches
         model.learning_rate = accumulate_grad_batches * ngpu * bs * base_lr

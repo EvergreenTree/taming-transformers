@@ -74,11 +74,12 @@ class VQModel(pl.LightningModule):
         return dec, diff
 
     def get_input(self, batch, k):
-        x = batch[k]
-        if len(x.shape) == 3:
-            x = x[..., None]
-        x = x.permute(0, 3, 1, 2).to(memory_format=torch.contiguous_format)
-        return x.float()
+#         x = batch[k]
+#         if len(x.shape) == 3:
+#             x = x[..., None]
+#         x = x.permute(0, 3, 1, 2).to(memory_format=torch.contiguous_format)
+        x, y = batch
+        return x
 
     def training_step(self, batch, batch_idx, optimizer_idx):
         x = self.get_input(batch, self.image_key)
@@ -110,7 +111,7 @@ class VQModel(pl.LightningModule):
         discloss, log_dict_disc = self.loss(qloss, x, xrec, 1, self.global_step,
                                             last_layer=self.get_last_layer(), split="val")
         rec_loss = log_dict_ae["val/rec_loss"]
-        self.log("val/rec_loss", rec_loss,
+        self.log("val/recloss", rec_loss,
                    prog_bar=True, logger=True, on_step=True, on_epoch=True, sync_dist=True)
         self.log("val/aeloss", aeloss,
                    prog_bar=True, logger=True, on_step=True, on_epoch=True, sync_dist=True)
@@ -240,7 +241,7 @@ class VQNoDiscModel(VQModel):
         aeloss, log_dict_ae = self.loss(qloss, x, xrec, self.global_step, split="val")
         rec_loss = log_dict_ae["val/rec_loss"]
         output = pl.EvalResult(checkpoint_on=rec_loss)
-        output.log("val/rec_loss", rec_loss,
+        output.log("val/recloss", rec_loss,
                    prog_bar=True, logger=True, on_step=True, on_epoch=True)
         output.log("val/aeloss", aeloss,
                    prog_bar=True, logger=True, on_step=True, on_epoch=True)

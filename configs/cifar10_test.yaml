@@ -1,0 +1,53 @@
+model:
+  base_learning_rate: 4.5e-5
+  target: taming.models.vqgan.VQModel
+  params:
+#     max_epochs: 20
+#     rec_mode: 'L2' # default L1, optional: L2
+#     lpips_mode: 'L2' # default L2, optional: L1
+#     disc_loss: 'hinge' # default hinge, optional: wasserstein, vanilla
+#     vq_mode: 'L2' # default L2, optinal:cosine, gaussian_kernel
+#     vq_start: 0
+    embed_dim: 128
+    n_embed: 1024
+    ddconfig:
+#       spatial: True
+      double_z: False
+      z_channels: 128
+      resolution: 32
+      in_channels: 3
+      out_ch: 3
+      ch: 128
+      ch_mult: [1,1,1]  # num_down = len(ch_mult)-1
+      num_res_blocks: 1
+      attn_resolutions: []
+      dropout: 0.0
+    lossconfig:
+      target: taming.modules.losses.vqperceptual.VQLPIPSWithDiscriminator # original codebase legacy
+      params:
+#         before_relu: True
+        disc_conditional: False
+        disc_in_channels: 3
+        disc_start: 50000
+        disc_weight: 0.2
+        codebook_weight: 1.0
+
+data:
+  target: main.DataModuleFromConfig
+  params:
+    batch_size: 1024
+    num_workers: 4
+    train:
+      target: torchvision.datasets.CIFAR10
+#       crop_resolution: 32
+#       resize_resolution: 32
+      params:
+        root: 'dataset'
+        download: True
+    validation:
+      target: torchvision.datasets.CIFAR10
+#       crop_resolution: 32
+#       resize_resolution: 32
+      params:
+        root: 'dataset'
+        download: True
